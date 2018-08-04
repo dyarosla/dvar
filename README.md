@@ -90,7 +90,7 @@ only be updated once, in the correct order.
 
 Below, we create a dependency graph like this
 
-```haxe
+```
      a
    /   \
   b     c
