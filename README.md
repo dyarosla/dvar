@@ -98,11 +98,30 @@ Below, we create a dependency graph like this
 
 ```haxe
 a.set(1);
-b.def(dep(function(){ return a.get() + 1; }));
-c.def(dep(function(){ return a.get() + 2; }));
-d.def(dep(function(){ return b.get() + c.get(); }));
+b.def(dep(function(){ return a.get() + 1; } ));
+c.def(dep(function(){ return a.get() + 2; } ));
+d.def(dep(function(){ return b.get() + c.get(); } ));
 
 d.get(); // a <- 1, b <- 2, c <- 3, d <- 5
+```
+
+#### Cycle Handling
+
+DVars will detect cycles. Cycles cannot have a well-defined ordering and so, DVars will not propogate value changes within a cycle.
+
+```haxe
+a.set(1);
+a.get(); // 1
+
+a.def(dep(function(){ return b.get() + 1; } ));
+b.def(dep(function(){ return a.get() + 1; } ));
+
+// A has a cyclical definition.
+a.get(); // 1 (no value propogation occurs to modify a)
+a.get(); // 1 (still)
+
+b.set(2);
+a.get(); // 3 (as a is no longer cyclically defined)
 ```
 
 ## Running the Tests
