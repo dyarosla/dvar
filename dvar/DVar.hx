@@ -43,8 +43,8 @@ class DVar<T> {
         } else {
             this.eq = eq;
         }
-        func = null;
         val = t;
+        func = function(){ return t; };
         dirty = false;
     }
 
@@ -87,6 +87,43 @@ class DVar<T> {
         def({func:function(){ return t; }, deps:null});
     }
 
+    public function def(data:{func:Void->T, deps:Array<DVar<Dynamic>>}):Void {
+        queueDef(this, data);
+    }
+
+    // If you want to change definitions within a register callback,
+    // to ensure atomicity, you have to queue the definition
+    // which will be executed as soon as DepStage is IDLE
+    function queueDef(dvar:DVar<Dynamic>,
+                      data: {
+                             func:Void->Dynamic,
+                             ?deps:Array<DVar<Dynamic>>
+                           }){
+        DepQueue.defQueue.push({dvar:dvar, data:data});
+        if(DepQueue.stage == IDLE){
+            processDefQueue();
+        }
+    }
+
+    function processDefQueue():Void {
+        if(DepQueue.defQueue.length == 0) {
+            DepQueue.nCount = 0;
+            return;
+        }
+
+        DepQueue.nCount++;
+        if(DepQueue.nCount > DepQueue.nCap){
+            DepQueue.defQueue.splice(0, DepQueue.defQueue.length);
+            DepQueue.nCount = 0;
+            throw "defQueue executed over max setting "+DepQueue.nCap;
+        }
+
+        var nextDef = DepQueue.defQueue.shift();
+        var dvar = nextDef.dvar;
+        var data = nextDef.data;
+        dvar.defFunc(data.func, data.deps);
+    }
+
     function defFunc(func:Void->T, deps:Array<DVar<Dynamic>> = null):Void {
         DepQueue.stage = MARK;
         if(func == null){
@@ -116,10 +153,6 @@ class DVar<T> {
             DepQueue.queue.push(this);
             propogate();
         }
-    }
-
-    public function def(data:{func:Void->T, deps:Array<DVar<Dynamic>>}):Void {
-        queueDef(this, data);
     }
 
     public function get():T {
@@ -177,7 +210,6 @@ class DVar<T> {
         deps = null;
     }
 
-    public function getHasFunc():Bool { return func != null; }
     public function getIsDirty():Bool { return dirty; }
 
     public function register(func:{old:T, change:T}->Void):Void {
@@ -191,43 +223,6 @@ class DVar<T> {
     function updateObservers(data:{old:T, change:T}):Void {
         for(observer in observers){
             observer(data);
-        }
-    }
-
-    function processDefQueue():Void {
-        if(DepQueue.defQueue.length == 0) {
-            DepQueue.nCount = 0;
-            return;
-        }
-
-        DepQueue.nCount++;
-        if(DepQueue.nCount > DepQueue.nCap){
-            DepQueue.defQueue.splice(0, DepQueue.defQueue.length);
-            DepQueue.nCount = 0;
-            throw "defQueue executed over max setting "+DepQueue.nCap;
-        }
-
-        var nextDef = DepQueue.defQueue.shift();
-        var dvar = nextDef.dvar;
-        var data = nextDef.data;
-        dvar.defFunc(data.func, data.deps);
-    }
-
-    public function getStage():DepStage {
-        return DepQueue.stage;
-    }
-
-    // If you want to change definitions within a register callback,
-    // to ensure atomicity, you have to queue the definition
-    // which will be executed as soon as DepStage is IDLE
-    function queueDef(dvar:DVar<Dynamic>,
-                      data: {
-                             func:Void->Dynamic,
-                             ?deps:Array<DVar<Dynamic>>
-                           }){
-        DepQueue.defQueue.push({dvar:dvar, data:data});
-        if(DepQueue.stage == IDLE){
-            processDefQueue();
         }
     }
 }
