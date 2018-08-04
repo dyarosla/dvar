@@ -109,7 +109,7 @@ d.get(); // a <- 1, b <- 2, c <- 3, d <- 5
 
 #### Cycle Handling
 
-DVars will detect cycles. Cycles cannot have a well-defined ordering and so, DVars will not propogate value changes within a cycle.
+DVars will detect cycles. Cycles are ambiguous in nature and have no well-defined order. Thus, DVars will not propogate value changes within a cycle.
 
 ```haxe
 a.set(1);
