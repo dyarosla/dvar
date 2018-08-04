@@ -30,7 +30,7 @@ b.get(); // 4
 
 #### Lazy Evaluation
 
-DVars are lazy-evaluated.
+DVars are lazily evaluated.
 
 ```haxe
 for(i in 0...1000){
@@ -54,7 +54,7 @@ b.register(
 
 a.set(10);
 
-// Observer not called yet, as b is lazy-evaluated
+// Observer not called yet, as b is lazily evaluated
 
 b.get(); // observer called, tracing old:1003 -> new:13
 ```
@@ -71,7 +71,9 @@ Luckily, DVars can be forced to be non-lazy. Simply set
 b.setForce(true);
 ```
 
-Used in conjunction with a `register` call,
+Note: this will also force dependencies of `b` to also update non-lazily so that `b` is up to date.
+
+Used in conjunction with a `register` call, we can see `b`'s non-laziness in action:
 
 ```haxe
 for(i in 0...1000){
