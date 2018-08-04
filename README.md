@@ -1,6 +1,6 @@
 ## DVar
 
-Dependency variables with atomic updates, cycle handling, and observers.
+Dependency variables with lazy evaluation, atomic updates, observers and cycle handling.
 
 ### To Use
 
