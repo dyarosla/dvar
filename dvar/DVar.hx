@@ -9,7 +9,7 @@ enum DStage {
 }
 
 class DStatic {
-    public static var queue:List<DVar<Dynamic>> = new List();
+    public static var propQueue:List<DVar<Dynamic>> = new List();
     public static var stage:DStage = IDLE;
 
     public static var defQueue:List<Void->Void> = new List();
@@ -77,9 +77,8 @@ class DVar<T> {
     // Propogate updates to force-vars
     function propogate():Void {
         DStatic.stage = PROP;
-        var len = DStatic.queue.length;
-        while(!DStatic.queue.isEmpty()){
-            DStatic.queue.pop().get();
+        while(!DStatic.propQueue.isEmpty()){
+            DStatic.propQueue.pop().get();
         }
         DStatic.stage = IDLE;
         processDefQueue();
@@ -109,7 +108,7 @@ class DVar<T> {
     }
 
     // If you want to change definitions within a register callback,
-    // to ensure atomicity, you have to queue the definition
+    // to ensure atomicity, you have to propQueue the definition
     // which will be executed as soon as DStage is IDLE
     public function def(data:{func:Void->T, deps:Array<DVar<Dynamic>>}):Void {
         DStatic.defQueue.add(defFunc.bind(data.func, data.deps));
@@ -168,7 +167,7 @@ class DVar<T> {
     public function setForce(f:Bool):Void {
         force = f;
         if(force && dirty){
-            DStatic.queue.add(this);
+            DStatic.propQueue.add(this);
             propogate();
         }
     }
@@ -215,7 +214,7 @@ class DVar<T> {
 
     function invalidate():Void {
         if(dirty) return;
-        if(force) DStatic.queue.add(this);
+        if(force) DStatic.propQueue.add(this);
         dirty = true;
         invalidateChildren();
     }
