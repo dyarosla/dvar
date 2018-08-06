@@ -143,8 +143,8 @@ class Main {
         Test.ce("queueDef b, c order", changes, 
             "b:0->1,c:0->1,b:1->2,c:1->2,b:2->3,c:2->3,b:3->4,c:3->4,b:4->5,c:4->5");
 
-        // Test cap on defqueue updates,
-        // need to actually throw something though
+        // Test cap on defqueue updates; should throw an exception
+        // if we are processing too many things.
         var caught:Bool = false;
         var a = new DVar<Int>(0);
         var i:Int = 1;
@@ -160,7 +160,6 @@ class Main {
         } catch(e:Dynamic) {
             caught = true;
         }
-
         Test.ce("queueDef catch ", caught, true);
 
         // CYCLE TESTS
@@ -190,6 +189,27 @@ class Main {
 
         a.set(3);
         Test.ce("change on break co-cycle ",changes, "b:3->4");
+
+        // BROADCAST QUEUE
+        var a = new DVar<Int>(0);
+        var b = new DVar<Int>(1);
+
+        changes = "";
+
+        var i:Int = 0;
+        b.register(
+            function(data){
+                addToChanges("b", data);
+                i++;
+                if(i < 5){
+                    a.set(i);
+                }
+                b.set(a.get());
+            });
+        b.set(a.get());
+        b.setForce(true);
+        Test.ce("broadcast order, updates within register", changes, 
+            "b:1->0,b:0->1,b:1->2,b:2->3,b:3->4");
 
         Test.end(true);
     }

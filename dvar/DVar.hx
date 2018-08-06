@@ -7,16 +7,23 @@ enum DStage {
 }
 
 class DStatic {
-    public static var queue:Array<DVar<Dynamic>> = [];
+    public static var queue:List<DVar<Dynamic>> = new List();
     public static var stage:DStage = IDLE;
-    public static var defQueue:Array<{dvar:DVar<Dynamic>,
+
+    public static var defQueue:List<{dvar:DVar<Dynamic>,
                                       data:{
                                           func:Void->Dynamic,
                                           ?deps:Array<DVar<Dynamic>>
-                                         }}> = [];
+                                         }}> = new List();
     public static var nCount:Int = 0;
     public static var nCap:Int = 1000;
-    public static var cycleVars:Array<DVar<Dynamic>> = [];
+    public static var bCount:Int = 0;
+    public static var bCap:Int = 1000;
+
+    public static var cycleVars:List<DVar<Dynamic>> = new List();
+
+    public static var broadcastQueue:List<Void->Void> = new List();
+    public static var broadcasting:Bool = false;
 }
 
 typedef Diff<T> = {old:T, change:T};
@@ -68,19 +75,36 @@ class DVar<T> {
             dvar.marked = false;
             dvar.cycle = false;
         }
-        DStatic.cycleVars.splice(0, DStatic.cycleVars.length);
+        DStatic.cycleVars.clear();
     }
 
     // Propogate updates to force-vars
     function propogate():Void {
         DStatic.stage = PROP;
         var len = DStatic.queue.length;
-        for(i in 0...len){
-            DStatic.queue[i].get();
+        while(!DStatic.queue.isEmpty()){
+            DStatic.queue.pop().get();
         }
-        DStatic.queue.splice(0, len);
         DStatic.stage = IDLE;
         processDefQueue();
+        if(DStatic.defQueue.isEmpty() && !DStatic.broadcasting) {
+            DStatic.broadcasting = true;
+            broadcastChanges();
+            DStatic.broadcasting = false;
+            DStatic.bCount = 0;
+        }
+    }
+
+    function broadcastChanges():Void {
+        while(!DStatic.broadcastQueue.isEmpty()){
+            DStatic.bCount++;
+            if(DStatic.bCount > DStatic.bCap){
+                clearQueues();
+                throw "broadcastQueue executed over max setting "+DStatic.bCap;
+            }
+            var broadcastMsg = DStatic.broadcastQueue.pop();
+            broadcastMsg();
+        }
     }
 
     // Set a value to t
@@ -100,29 +124,36 @@ class DVar<T> {
                              func:Void->Dynamic,
                              ?deps:Array<DVar<Dynamic>>
                            }){
-        DStatic.defQueue.push({dvar:dvar, data:data});
+        DStatic.defQueue.add({dvar:dvar, data:data});
         if(DStatic.stage == IDLE){
             processDefQueue();
         }
     }
 
     function processDefQueue():Void {
-        if(DStatic.defQueue.length == 0) {
+        if(DStatic.defQueue.isEmpty()) {
             DStatic.nCount = 0;
             return;
         }
 
         DStatic.nCount++;
         if(DStatic.nCount > DStatic.nCap){
-            DStatic.defQueue.splice(0, DStatic.defQueue.length);
-            DStatic.nCount = 0;
+            clearQueues();
             throw "defQueue executed over max setting "+DStatic.nCap;
         }
 
-        var nextDef = DStatic.defQueue.shift();
+        var nextDef = DStatic.defQueue.pop();
         var dvar = nextDef.dvar;
         var data = nextDef.data;
         dvar.defFunc(data.func, data.deps);
+    }
+
+    function clearQueues():Void {
+        DStatic.broadcastQueue.clear();
+        DStatic.bCount = 0;
+        DStatic.broadcasting = false;
+        DStatic.defQueue.clear();
+        DStatic.nCount = 0;
     }
 
     function defFunc(func:Void->T, deps:Array<DVar<Dynamic>> = null):Void {
@@ -151,7 +182,7 @@ class DVar<T> {
     public function setForce(f:Bool):Void {
         force = f;
         if(force && dirty){
-            DStatic.queue.push(this);
+            DStatic.queue.add(this);
             propogate();
         }
     }
@@ -162,7 +193,7 @@ class DVar<T> {
         if(!marked){
             marked = true;
         } else if(!cycle){
-            DStatic.cycleVars.push(this);
+            DStatic.cycleVars.add(this);
             cycle = true;
         } else {
             dirty = false;
@@ -198,7 +229,7 @@ class DVar<T> {
 
     function invalidate():Void {
         if(dirty) return;
-        if(force) DStatic.queue.push(this);
+        if(force) DStatic.queue.add(this);
         dirty = true;
         invalidateChildren();
     }
@@ -231,7 +262,7 @@ class DVar<T> {
 
     function updateObservers(diff:Diff<T>):Void {
         for(observer in observers){
-            observer(diff);
+            DStatic.broadcastQueue.add(observer.bind(diff));
         }
     }
 
