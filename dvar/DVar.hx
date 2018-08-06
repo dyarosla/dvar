@@ -211,8 +211,6 @@ class DVar<T> {
         deps = null;
     }
 
-    public function getIsDirty():Bool { return dirty; }
-
     public function register(func:Diff<T>->Void):Void {
         if(observers == null){
             observers = [func];
@@ -235,6 +233,16 @@ class DVar<T> {
         for(observer in observers){
             observer(diff);
         }
+    }
+
+    public function isDirty():Bool { return dirty; }
+
+    public function dispose():Void {
+        clearDeps();
+        observers = null;
+        listeners = null;
+        eq = null;
+        func = null;
     }
 
     static var eqDefault = function(t0:T, t1:T){ return t0 == t1; }
