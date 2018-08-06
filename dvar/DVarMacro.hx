@@ -13,106 +13,102 @@ class DVarMacro {
 
     // We take in a function and return a set of the function and 
     // the list of variables it uses that are of type dep.DVar
-  public static macro function dep(expr:Expr):Expr {
+    public static macro function dep(expr:Expr):Expr {
 
-	  var pos = Context.currentPos();
-	  var paths = [];
-      var decls = new Map<String, Bool>();
-	  switch(expr.expr){
-		  case EFunction(_, fnc):
-			  findVars(expr, paths, [], decls);
-		  default: throw "Expected a function";
-	  }
+        var pos = Context.currentPos();
+        var paths = [];
+        var decls = new Map<String, Bool>();
 
-	  // We avoid vars that are defined within the function
-	  //var tvars = Context.getLocalTVars();
-      //
-	  var iMap = new Map<String, String>();
-	  var is = [];
-	  for(path in paths){
-		  var start = path.shift();
-          if(decls.exists(start)){
-              continue;
-          }
+        switch(expr.expr){
+            case EFunction(_, fnc): findVars(expr, paths, [], decls);
+            default: throw "Expected a function";
+        }
 
-		  var ident;
-		  var identStr:String = null;
-		  var done:Bool = false;
-		  while(true){
-			  if(identStr == null){
-				  ident = macro $i{start};
-				  identStr = start;
-				  if(path.length == 0){
-					  done = true;
-				  }
-			  } else {
-				  var field = path.shift();
-				  identStr += "."+field;
-				  ident = macro $ident.$field;
-				  if(path.length == 0) {
-					  done = true;
-				  }
-			  }
+        var iMap = new Map<String, String>();
+        var is = [];
+        for(path in paths){
+            var start = path.shift();
+            if(decls.exists(start)){
+                continue;
+            }
 
-			  if(ident == null) {
-				  break;
-			  }
+            var ident;
+            var identStr:String = null;
+            var done:Bool = false;
+            while(true){
+                if(identStr == null){
+                    ident = macro $i{start};
+                    identStr = start;
+                    if(path.length == 0){
+                        done = true;
+                    }
+                } else {
+                    var field = path.shift();
+                    identStr += "."+field;
+                    ident = macro $ident.$field;
+                    if(path.length == 0) {
+                        done = true;
+                    }
+                }
 
-			  var typ = Context.typeof(ident);
-			  switch(typ.follow()){
-				  case TInst(ref,_):
-					  var classType = ref.toString();
-					  if(classType == findType){
-						  if(iMap.exists(identStr)){
-                              break; // used to be continue
-						  }
-						  iMap.set(identStr,identStr);
-						  is.push(ident);
-                          break;
-					  }
-                  case TFun(args, ret): break;
-				  default:
-			  }
+                if(ident == null) {
+                    break;
+                }
 
-			  if(done){
-				  break;
-			  }
-		  }
-	  }
+                var typ = Context.typeof(ident);
+                switch(typ.follow()){
+                    case TInst(ref,_):
+                        var classType = ref.toString();
+                        if(classType == findType){
+                            // We already have this identifier in our set
+                            if(iMap.exists(identStr)) break;
+                            iMap.set(identStr,identStr);
+                            is.push(ident);
+                            break;
+                        }
+                    case TFun(args, ret): break;
+                    default:
+                }
 
-      var ids = macro $a{is};
-      if(is.length == 0){
-          ids = macro $v{null};
-      }
+                if(done){
+                    break;
+                }
+            }
+        }
 
-	  var names = macro $v{iMap.array()};
-	  var objList:Array<{field:String, expr:Expr}> = [];
-	  objList.push({field:"deps", expr:ids});
-	  objList.push({field:"func", expr:expr});
+        var ids = macro $a{is};
+        if(is.length == 0){
+            ids = macro $v{null};
+        }
 
-	  var result = {expr:EObjectDecl(objList), pos:pos};
+        var names = macro $v{iMap.array()};
+        var objList:Array<{field:String, expr:Expr}> = [];
+        objList.push({field:"func", expr:expr});
+        objList.push({field:"deps", expr:ids});
 
-	  return macro $b{[result]};
-  }
+        var result = {expr:EObjectDecl(objList), pos:pos};
 
-	static function findVars(e:Expr, arr:Array<Path>, path:Path, decls:Map<String, Bool>) {
-		switch(e.expr) {
-			case EConst(CIdent(s)):
-				var path = path.copy();
-				path.push(s);
-				path.reverse();
-				arr.push(path);
-			case EField(e, field):
-				var path = path.copy();
-				path.push(field);
-				findVars(e, arr, path, decls);
+        return macro $b{[result]};
+    }
+
+    static function findVars(e:Expr, arr:Array<Path>, path:Path, decls:Map<String, Bool>) {
+        switch(e.expr) {
+            case EConst(CIdent(s)):
+                var path = path.copy();
+                path.push(s);
+                path.reverse();
+                arr.push(path);
+            case EField(e, field):
+                var path = path.copy();
+                path.push(field);
+                findVars(e, arr, path, decls);
             case EVars(vars):
                 for(evar in vars){
                     decls.set(evar.name, true);
                 }
-				ExprTools.iter(e, findVars.bind(_,arr,path,decls));
-			case _:
-				ExprTools.iter(e, findVars.bind(_,arr,path,decls));
-		}
-	}
+                ExprTools.iter(e, findVars.bind(_,arr,path,decls));
+            case _:
+                ExprTools.iter(e, findVars.bind(_,arr,path,decls));
+        }
+    }
 }
