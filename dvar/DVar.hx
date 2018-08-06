@@ -1,5 +1,7 @@
 package dvar;
 
+typedef Diff<T> = {old:T, change:T};
+
 enum DStage {
     IDLE;
     MARK;
@@ -10,23 +12,23 @@ class DStatic {
     public static var queue:List<DVar<Dynamic>> = new List();
     public static var stage:DStage = IDLE;
 
-    public static var defQueue:List<{dvar:DVar<Dynamic>,
-                                      data:{
-                                          func:Void->Dynamic,
-                                          ?deps:Array<DVar<Dynamic>>
-                                         }}> = new List();
-    public static var nCount:Int = 0;
-    public static var nCap:Int = 1000;
+    public static var defQueue:List<{
+                                        dvar:DVar<Dynamic>,
+                                        data: {
+                                                func:Void->Dynamic,
+                                                ?deps:Array<DVar<Dynamic>>
+                                              }
+                                    }> = new List();
+    public static var dCount:Int = 0;
+    public static var dCap:Int = 1000;
+
+    public static var broadcastQueue:List<Void->Void> = new List();
+    public static var broadcasting:Bool = false;
     public static var bCount:Int = 0;
     public static var bCap:Int = 1000;
 
     public static var cycleVars:List<DVar<Dynamic>> = new List();
-
-    public static var broadcastQueue:List<Void->Void> = new List();
-    public static var broadcasting:Bool = false;
 }
-
-typedef Diff<T> = {old:T, change:T};
 
 class DVar<T> {
 
@@ -132,14 +134,14 @@ class DVar<T> {
 
     function processDefQueue():Void {
         if(DStatic.defQueue.isEmpty()) {
-            DStatic.nCount = 0;
+            DStatic.dCount = 0;
             return;
         }
 
-        DStatic.nCount++;
-        if(DStatic.nCount > DStatic.nCap){
+        DStatic.dCount++;
+        if(DStatic.dCount > DStatic.dCap){
             clearQueues();
-            throw "defQueue executed over max setting "+DStatic.nCap;
+            throw "defQueue executed over max setting "+DStatic.dCap;
         }
 
         var nextDef = DStatic.defQueue.pop();
@@ -153,7 +155,7 @@ class DVar<T> {
         DStatic.bCount = 0;
         DStatic.broadcasting = false;
         DStatic.defQueue.clear();
-        DStatic.nCount = 0;
+        DStatic.dCount = 0;
     }
 
     function defFunc(func:Void->T, deps:Array<DVar<Dynamic>> = null):Void {
