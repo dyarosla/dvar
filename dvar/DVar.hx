@@ -1,14 +1,14 @@
 package dvar;
 
-enum DepStage {
+enum DStage {
     IDLE;
     MARK;
     PROP;
 }
 
-class DepQueue {
+class DStatic {
     public static var queue:Array<DVar<Dynamic>> = [];
-    public static var stage:DepStage = IDLE;
+    public static var stage:DStage = IDLE;
     public static var defQueue:Array<{dvar:DVar<Dynamic>,
                                       data:{
                                           func:Void->Dynamic,
@@ -18,6 +18,8 @@ class DepQueue {
     public static var nCap:Int = 1000;
     public static var cycleVars:Array<DVar<Dynamic>> = [];
 }
+
+typedef Diff<T> = {old:T, change:T};
 
 class DVar<T> {
 
@@ -31,7 +33,7 @@ class DVar<T> {
     var marked:Bool = false;
     var cycle:Bool = false;
 
-    var observers:Array<{old:T, change:T}->Void>;
+    var observers:Array<Diff<T>->Void>;
     var eq:T->T->Bool;
 
     public function new(t:T, eq:T->T->Bool = null):Void {
@@ -39,7 +41,7 @@ class DVar<T> {
         observers = null;
         deps = null;
         if(eq == null){
-            this.eq = function(t0, t1){ return t0 == t1; }
+            this.eq = eqDefault;
         } else {
             this.eq = eq;
         }
@@ -50,7 +52,6 @@ class DVar<T> {
 
     // Update my value to t
     function updateVal(t:T):Void {
-        // we need to mark clean independent of if our value changed
         dirty = false;
         if(eq(val, t)) return;
         if(observers == null){
@@ -63,22 +64,22 @@ class DVar<T> {
     }
 
     function clearCycles():Void {
-        for(dvar in DepQueue.cycleVars){
+        for(dvar in DStatic.cycleVars){
             dvar.marked = false;
             dvar.cycle = false;
         }
-        DepQueue.cycleVars.splice(0, DepQueue.cycleVars.length);
+        DStatic.cycleVars.splice(0, DStatic.cycleVars.length);
     }
 
     // Propogate updates to force-vars
     function propogate():Void {
-        DepQueue.stage = PROP;
-        var len = DepQueue.queue.length;
+        DStatic.stage = PROP;
+        var len = DStatic.queue.length;
         for(i in 0...len){
-            DepQueue.queue[i].get();
+            DStatic.queue[i].get();
         }
-        DepQueue.queue.splice(0, len);
-        DepQueue.stage = IDLE;
+        DStatic.queue.splice(0, len);
+        DStatic.stage = IDLE;
         processDefQueue();
     }
 
@@ -93,39 +94,39 @@ class DVar<T> {
 
     // If you want to change definitions within a register callback,
     // to ensure atomicity, you have to queue the definition
-    // which will be executed as soon as DepStage is IDLE
+    // which will be executed as soon as DStage is IDLE
     function queueDef(dvar:DVar<Dynamic>,
                       data: {
                              func:Void->Dynamic,
                              ?deps:Array<DVar<Dynamic>>
                            }){
-        DepQueue.defQueue.push({dvar:dvar, data:data});
-        if(DepQueue.stage == IDLE){
+        DStatic.defQueue.push({dvar:dvar, data:data});
+        if(DStatic.stage == IDLE){
             processDefQueue();
         }
     }
 
     function processDefQueue():Void {
-        if(DepQueue.defQueue.length == 0) {
-            DepQueue.nCount = 0;
+        if(DStatic.defQueue.length == 0) {
+            DStatic.nCount = 0;
             return;
         }
 
-        DepQueue.nCount++;
-        if(DepQueue.nCount > DepQueue.nCap){
-            DepQueue.defQueue.splice(0, DepQueue.defQueue.length);
-            DepQueue.nCount = 0;
-            throw "defQueue executed over max setting "+DepQueue.nCap;
+        DStatic.nCount++;
+        if(DStatic.nCount > DStatic.nCap){
+            DStatic.defQueue.splice(0, DStatic.defQueue.length);
+            DStatic.nCount = 0;
+            throw "defQueue executed over max setting "+DStatic.nCap;
         }
 
-        var nextDef = DepQueue.defQueue.shift();
+        var nextDef = DStatic.defQueue.shift();
         var dvar = nextDef.dvar;
         var data = nextDef.data;
         dvar.defFunc(data.func, data.deps);
     }
 
     function defFunc(func:Void->T, deps:Array<DVar<Dynamic>> = null):Void {
-        DepQueue.stage = MARK;
+        DStatic.stage = MARK;
         if(func == null){
             set(val);
             return;
@@ -150,7 +151,7 @@ class DVar<T> {
     public function setForce(f:Bool):Void {
         force = f;
         if(force && dirty){
-            DepQueue.queue.push(this);
+            DStatic.queue.push(this);
             propogate();
         }
     }
@@ -161,7 +162,7 @@ class DVar<T> {
         if(!marked){
             marked = true;
         } else if(!cycle){
-            DepQueue.cycleVars.push(this);
+            DStatic.cycleVars.push(this);
             cycle = true;
         } else {
             dirty = false;
@@ -197,7 +198,7 @@ class DVar<T> {
 
     function invalidate():Void {
         if(dirty) return;
-        if(force) DepQueue.queue.push(this);
+        if(force) DStatic.queue.push(this);
         dirty = true;
         invalidateChildren();
     }
@@ -212,7 +213,7 @@ class DVar<T> {
 
     public function getIsDirty():Bool { return dirty; }
 
-    public function register(func:{old:T, change:T}->Void):Void {
+    public function register(func:Diff<T>->Void):Void {
         if(observers == null){
             observers = [func];
         } else {
@@ -220,7 +221,7 @@ class DVar<T> {
         }
     }
 
-    public function unregister(func:{old:T, change:T}->Void):Void {
+    public function unregister(func:Diff<T>->Void):Void {
         if(observers == null) return;
         observers.remove(func);
         if(observers.length == 0) observers = null;
@@ -230,9 +231,11 @@ class DVar<T> {
         observers = null;
     }
 
-    function updateObservers(data:{old:T, change:T}):Void {
+    function updateObservers(diff:Diff<T>):Void {
         for(observer in observers){
-            observer(data);
+            observer(diff);
         }
     }
+
+    static var eqDefault = function(t0:T, t1:T){ return t0 == t1; }
 }
