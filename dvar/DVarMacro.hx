@@ -17,25 +17,29 @@ class DVarMacro {
 
 	  var pos = Context.currentPos();
 	  var paths = [];
+      var decls = new Map<String, Bool>();
 	  switch(expr.expr){
 		  case EFunction(_, fnc):
-			  findVars(expr, paths, []);
+			  findVars(expr, paths, [], decls);
 		  default: throw "Expected a function";
 	  }
 
 	  // We avoid vars that are defined within the function
-	  var tvars = Context.getLocalTVars();
+	  //var tvars = Context.getLocalTVars();
+      //
 	  var iMap = new Map<String, String>();
 	  var is = [];
 	  for(path in paths){
 		  var start = path.shift();
-		  if(!tvars.exists(start)) continue;
+          if(decls.exists(start)){
+              continue;
+          }
 
 		  var ident;
-		  var identStr:String = "";
+		  var identStr:String = null;
 		  var done:Bool = false;
 		  while(true){
-			  if(identStr == ""){
+			  if(identStr == null){
 				  ident = macro $i{start};
 				  identStr = start;
 				  if(path.length == 0){
@@ -60,11 +64,13 @@ class DVarMacro {
 					  var classType = ref.toString();
 					  if(classType == findType){
 						  if(iMap.exists(identStr)){
-							  continue;
+                              break; // used to be continue
 						  }
 						  iMap.set(identStr,identStr);
 						  is.push(ident);
+                          break;
 					  }
+                  case TFun(args, ret): break;
 				  default:
 			  }
 
@@ -78,8 +84,8 @@ class DVarMacro {
       if(is.length == 0){
           ids = macro $v{null};
       }
-	  var names = macro $v{iMap.array()};
 
+	  var names = macro $v{iMap.array()};
 	  var objList:Array<{field:String, expr:Expr}> = [];
 	  objList.push({field:"deps", expr:ids});
 	  objList.push({field:"func", expr:expr});
@@ -91,7 +97,7 @@ class DVarMacro {
 	  return macro $b{[result]};
   }
 
-	static function findVars(e:Expr, arr:Array<Path>, path:Path) {
+	static function findVars(e:Expr, arr:Array<Path>, path:Path, decls:Map<String, Bool>) {
 		switch(e.expr) {
 			case EConst(CIdent(s)):
 				var path = path.copy();
@@ -101,9 +107,14 @@ class DVarMacro {
 			case EField(e, field):
 				var path = path.copy();
 				path.push(field);
-				findVars(e, arr, path);
+				findVars(e, arr, path, decls);
+            case EVars(vars):
+                for(evar in vars){
+                    decls.set(evar.name, true);
+                }
+				ExprTools.iter(e, findVars.bind(_,arr,path,decls));
 			case _:
-				ExprTools.iter(e, findVars.bind(_,arr,path));
+				ExprTools.iter(e, findVars.bind(_,arr,path,decls));
 		}
 	}
 }

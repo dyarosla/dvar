@@ -220,6 +220,16 @@ class DVar<T> {
         }
     }
 
+    public function unregister(func:{old:T, change:T}->Void):Void {
+        if(observers == null) return;
+        observers.remove(func);
+        if(observers.length == 0) observers = null;
+    }
+
+    public function unregisterAll():Void {
+        observers = null;
+    }
+
     function updateObservers(data:{old:T, change:T}):Void {
         for(observer in observers){
             observer(data);
