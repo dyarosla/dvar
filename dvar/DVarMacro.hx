@@ -89,8 +89,6 @@ class DVarMacro {
 	  var objList:Array<{field:String, expr:Expr}> = [];
 	  objList.push({field:"deps", expr:ids});
 	  objList.push({field:"func", expr:expr});
-	  //objList.push({field:"vars", expr:names});
-	  //objList.push({field:"test", expr:test});
 
 	  var result = {expr:EObjectDecl(objList), pos:pos};
 
