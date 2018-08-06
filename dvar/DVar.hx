@@ -12,13 +12,7 @@ class DStatic {
     public static var queue:List<DVar<Dynamic>> = new List();
     public static var stage:DStage = IDLE;
 
-    public static var defQueue:List<{
-                                        dvar:DVar<Dynamic>,
-                                        data: {
-                                                func:Void->Dynamic,
-                                                ?deps:Array<DVar<Dynamic>>
-                                              }
-                                    }> = new List();
+    public static var defQueue:List<Void->Void> = new List();
     public static var dCount:Int = 0;
     public static var dCap:Int = 1000;
 
@@ -114,19 +108,11 @@ class DVar<T> {
         def({func:function(){ return t; }, deps:null});
     }
 
-    public function def(data:{func:Void->T, deps:Array<DVar<Dynamic>>}):Void {
-        queueDef(this, data);
-    }
-
     // If you want to change definitions within a register callback,
     // to ensure atomicity, you have to queue the definition
     // which will be executed as soon as DStage is IDLE
-    function queueDef(dvar:DVar<Dynamic>,
-                      data: {
-                             func:Void->Dynamic,
-                             ?deps:Array<DVar<Dynamic>>
-                           }){
-        DStatic.defQueue.add({dvar:dvar, data:data});
+    public function def(data:{func:Void->T, deps:Array<DVar<Dynamic>>}):Void {
+        DStatic.defQueue.add(defFunc.bind(data.func, data.deps));
         if(DStatic.stage == IDLE){
             processDefQueue();
         }
@@ -145,9 +131,7 @@ class DVar<T> {
         }
 
         var nextDef = DStatic.defQueue.pop();
-        var dvar = nextDef.dvar;
-        var data = nextDef.data;
-        dvar.defFunc(data.func, data.deps);
+        nextDef();
     }
 
     function clearQueues():Void {
