@@ -28,7 +28,7 @@ class DVarMacro {
         var is = [];
         for(path in paths){
             var start = path.shift();
-            if(decls.exists(start)){
+            if(decls.exists(start) || start == "trace"){
                 continue;
             }
 

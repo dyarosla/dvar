@@ -63,6 +63,7 @@ class DVar<T> {
             var prev = val;
             val = t;
             updateObservers({old:prev, change:val});
+            broadcastChanges();
         }
     }
 
@@ -82,15 +83,16 @@ class DVar<T> {
         }
         DStatic.stage = IDLE;
         processDefQueue();
-        if(DStatic.defQueue.isEmpty() && !DStatic.broadcasting) {
-            DStatic.broadcasting = true;
+        if(DStatic.defQueue.isEmpty()) {
             broadcastChanges();
-            DStatic.broadcasting = false;
-            DStatic.bCount = 0;
         }
     }
 
     function broadcastChanges():Void {
+        if(DStatic.stage != IDLE) return;
+        if(DStatic.broadcasting) return;
+        DStatic.broadcasting = true;
+
         while(!DStatic.broadcastQueue.isEmpty()){
             DStatic.bCount++;
             if(DStatic.bCount > DStatic.bCap){
@@ -100,11 +102,16 @@ class DVar<T> {
             var broadcastMsg = DStatic.broadcastQueue.pop();
             broadcastMsg();
         }
+
+        DStatic.broadcasting = false;
+        DStatic.bCount = 0;
+        processDefQueue();
     }
 
     // Set a value to t
-    public function set(t:T):Void {
+    public function set(t:T, setForceTrue:Bool = false):Void {
         def({func:function(){ return t; }, deps:null});
+        if(setForceTrue) setForce(true);
     }
 
     // If you want to change definitions within a register callback,
@@ -165,6 +172,7 @@ class DVar<T> {
     }
 
     public function setForce(f:Bool):Void {
+        if(force == f) return;
         force = f;
         if(force && dirty){
             DStatic.propQueue.add(this);
@@ -198,6 +206,7 @@ class DVar<T> {
 
         marked = false;
         updateVal(func());
+
         return val;
     }
 
@@ -227,12 +236,13 @@ class DVar<T> {
         deps = null;
     }
 
-    public function register(func:Diff<T>->Void):Void {
+    public function register(func:Diff<T>->Void, setForceTrue:Bool = false):Void {
         if(observers == null){
             observers = [func];
         } else {
             observers.push(func);
         }
+        if(setForceTrue) setForce(true);
     }
 
     public function unregister(func:Diff<T>->Void):Void {

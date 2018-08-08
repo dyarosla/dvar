@@ -211,6 +211,21 @@ class Main {
         Test.ce("broadcast order, updates within register", changes, 
             "b:1->0,b:0->1,b:1->2,b:2->3,b:3->4");
 
+        // BROADCAST LAZY
+        var a = new DVar<Int>(0);
+        var b = new DVar<Int>(1);
+
+        b.def(dep(
+            function(){
+                return a.get();
+            }));
+
+        changes = "";
+        b.register(addToChanges.bind("b"));
+
+        b.get();
+        Test.ce("lazy register update", changes, "b:1->0");
+
         Test.end(true);
     }
 }
