@@ -2,26 +2,72 @@ package dvar;
 
 typedef Diff<T> = {old:T, change:T};
 
-enum DStage {
-    IDLE;
-    MARK;
-    PROP;
-}
-
 class DStatic {
     public static var propQueue:List<DVar<Dynamic>> = new List();
-    public static var stage:DStage = IDLE;
 
     public static var defQueue:List<Void->Void> = new List();
     public static var dCount:Int = 0;
     public static var dCap:Int = 1000;
 
     public static var broadcastQueue:List<Void->Void> = new List();
-    public static var broadcasting:Bool = false;
     public static var bCount:Int = 0;
     public static var bCap:Int = 1000;
+    public static var broadcasting:Bool = false;
+    public static var processing:Bool = false;
 
     public static var cycleVars:List<DVar<Dynamic>> = new List();
+
+    static function clearQueues():Void {
+        broadcasting = false;
+        processing = false;
+        defQueue.clear();
+        dCount = 0;
+        broadcastQueue.clear();
+        bCount = 0;
+    }
+
+    public static function process():Void {
+        if(processing) return;
+        processing = true;
+        while(true){
+            if(!propQueue.isEmpty()){
+                propQueue.pop().get();
+            } else if(!defQueue.isEmpty()){
+                dCount++;
+                if(dCount > dCap){
+                    clearQueues();
+                    throw "defQueue executed over max setting "+dCap;
+                }
+                var nextDef = defQueue.pop();
+                nextDef();
+            } else {
+                break;
+            }
+        }
+        processing = false;
+        doBroadcast();
+    }
+
+    public static function doBroadcast():Void {
+        while(true){
+            if(broadcasting) return;
+            if(!broadcastQueue.isEmpty()){
+                broadcasting = true;
+                bCount++;
+                if(bCount > bCap){
+                    clearQueues();
+                    throw "broadcastQueue executed over max setting "+bCap;
+                }
+                var broadcast = broadcastQueue.pop();
+                broadcast();
+                broadcasting = false;
+            } else {
+                dCount = 0;
+                bCount = 0;
+                return;
+            }
+        }
+    }
 }
 
 class DVar<T> {
@@ -38,6 +84,7 @@ class DVar<T> {
 
     var observers:Array<Diff<T>->Void>;
     var eq:T->T->Bool;
+    var process:Void->Void;
 
     public function new(t:T, eq:T->T->Bool = null):Void {
         listeners = null;
@@ -51,6 +98,7 @@ class DVar<T> {
         val = t;
         func = function(){ return t; };
         dirty = false;
+        process = DStatic.process;
     }
 
     // Update my value to t
@@ -63,7 +111,7 @@ class DVar<T> {
             var prev = val;
             val = t;
             updateObservers({old:prev, change:val});
-            broadcastChanges();
+            process();
         }
     }
 
@@ -75,39 +123,6 @@ class DVar<T> {
         DStatic.cycleVars.clear();
     }
 
-    // Propogate updates to force-vars
-    function propogate():Void {
-        DStatic.stage = PROP;
-        while(!DStatic.propQueue.isEmpty()){
-            DStatic.propQueue.pop().get();
-        }
-        DStatic.stage = IDLE;
-        processDefQueue();
-        if(DStatic.defQueue.isEmpty()) {
-            broadcastChanges();
-        }
-    }
-
-    function broadcastChanges():Void {
-        if(DStatic.stage != IDLE) return;
-        if(DStatic.broadcasting) return;
-        DStatic.broadcasting = true;
-
-        while(!DStatic.broadcastQueue.isEmpty()){
-            DStatic.bCount++;
-            if(DStatic.bCount > DStatic.bCap){
-                clearQueues();
-                throw "broadcastQueue executed over max setting "+DStatic.bCap;
-            }
-            var broadcastMsg = DStatic.broadcastQueue.pop();
-            broadcastMsg();
-        }
-
-        DStatic.broadcasting = false;
-        DStatic.bCount = 0;
-        processDefQueue();
-    }
-
     // Set a value to t
     public function set(t:T, setForceTrue:Bool = false):Void {
         def({func:function(){ return t; }, deps:null});
@@ -116,40 +131,12 @@ class DVar<T> {
 
     // If you want to change definitions within a register callback,
     // to ensure atomicity, you have to propQueue the definition
-    // which will be executed as soon as DStage is IDLE
     public function def(data:{func:Void->T, deps:Array<DVar<Dynamic>>}):Void {
         DStatic.defQueue.add(defFunc.bind(data.func, data.deps));
-        if(DStatic.stage == IDLE){
-            processDefQueue();
-        }
-    }
-
-    function processDefQueue():Void {
-        if(DStatic.defQueue.isEmpty()) {
-            DStatic.dCount = 0;
-            return;
-        }
-
-        DStatic.dCount++;
-        if(DStatic.dCount > DStatic.dCap){
-            clearQueues();
-            throw "defQueue executed over max setting "+DStatic.dCap;
-        }
-
-        var nextDef = DStatic.defQueue.pop();
-        nextDef();
-    }
-
-    function clearQueues():Void {
-        DStatic.broadcastQueue.clear();
-        DStatic.bCount = 0;
-        DStatic.broadcasting = false;
-        DStatic.defQueue.clear();
-        DStatic.dCount = 0;
+        process();
     }
 
     function defFunc(func:Void->T, deps:Array<DVar<Dynamic>> = null):Void {
-        DStatic.stage = MARK;
         if(func == null){
             set(val);
             return;
@@ -168,7 +155,7 @@ class DVar<T> {
 
         invalidate();
         clearCycles();
-        propogate();
+        process();
     }
 
     public function setForce(f:Bool):Void {
@@ -176,7 +163,7 @@ class DVar<T> {
         force = f;
         if(force && dirty){
             DStatic.propQueue.add(this);
-            propogate();
+            process();
         }
     }
 
