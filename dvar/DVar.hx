@@ -270,6 +270,7 @@ class DVar<T> {
     }
 
     inline function updateCycleObservers():Void {
+        if(cycleObservers == null) return;
         for(cycleObserver in cycleObservers){
             DStatic.broadcastQueue.add(cycleObserver.bind(cycle));
         }
