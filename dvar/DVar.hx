@@ -281,6 +281,7 @@ class DVar<T> {
     public function dispose():Void {
         clearDeps();
         observers = null;
+        cycleObservers = null;
         listeners = null;
         eq = null;
         func = null;
