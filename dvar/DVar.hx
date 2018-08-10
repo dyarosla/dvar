@@ -2,6 +2,7 @@ package dvar;
 
 typedef Diff<T> = {old:T, change:T};
 
+@:access(dvar.DVar)
 class DStatic {
     public static var propQueue:List<DVar<Dynamic>> = new List();
 
@@ -16,6 +17,13 @@ class DStatic {
     public static var processing:Bool = false;
 
     public static var cycleVars:List<DVar<Dynamic>> = new List();
+
+    public static function clearCycles():Void {
+        for(dvar in cycleVars){
+            dvar.marked = false;
+        }
+        cycleVars.clear();
+    }
 
     static function clearQueues():Void {
         broadcasting = false;
@@ -83,8 +91,8 @@ class DVar<T> {
     var cycle:Bool = false;
 
     var observers:Array<Diff<T>->Void>;
+    var cycleObservers:Array<Bool->Void>;
     var eq:T->T->Bool;
-    var process:Void->Void;
 
     public function new(t:T, eq:T->T->Bool = null):Void {
         listeners = null;
@@ -98,7 +106,6 @@ class DVar<T> {
         val = t;
         func = function(){ return t; };
         dirty = false;
-        process = DStatic.process;
     }
 
     // Update my value to t
@@ -111,29 +118,20 @@ class DVar<T> {
             var prev = val;
             val = t;
             updateObservers({old:prev, change:val});
-            process();
+            DStatic.process();
         }
-    }
-
-    function clearCycles():Void {
-        for(dvar in DStatic.cycleVars){
-            dvar.marked = false;
-            dvar.cycle = false;
-        }
-        DStatic.cycleVars.clear();
     }
 
     // Set a value to t
-    public function set(t:T, setForceTrue:Bool = false):Void {
+    public function set(t:T):Void {
         def({func:function(){ return t; }, deps:null});
-        if(setForceTrue) setForce(true);
     }
 
     // If you want to change definitions within a register callback,
     // to ensure atomicity, you have to propQueue the definition
     public function def(data:{func:Void->T, deps:Array<DVar<Dynamic>>}):Void {
         DStatic.defQueue.add(defFunc.bind(data.func, data.deps));
-        process();
+        DStatic.process();
     }
 
     function defFunc(func:Void->T, deps:Array<DVar<Dynamic>> = null):Void {
@@ -154,8 +152,8 @@ class DVar<T> {
         }
 
         invalidate();
-        clearCycles();
-        process();
+        DStatic.clearCycles();
+        DStatic.process();
     }
 
     public function setForce(f:Bool):Void {
@@ -163,15 +161,19 @@ class DVar<T> {
         force = f;
         if(force && dirty){
             DStatic.propQueue.add(this);
-            process();
+            DStatic.process();
         }
     }
 
     public function get():T {
-        if(!dirty) return val;
+        if(!dirty && !cycle) return val;
+
+        var startCycle = cycle;
 
         if(!marked){
+            cycle = false;
             marked = true;
+            dirty = true;
         } else if(!cycle){
             DStatic.cycleVars.add(this);
             cycle = true;
@@ -188,7 +190,12 @@ class DVar<T> {
 
         if(cycle){
             dirty = false;
+            updateCycleObservers();
             return val;
+        }
+
+        if(startCycle){
+            updateCycleObservers();
         }
 
         marked = false;
@@ -215,7 +222,7 @@ class DVar<T> {
         invalidateChildren();
     }
 
-    function clearDeps():Void {
+    inline function clearDeps():Void {
         if(deps == null) return;
         for(dep in deps){
             dep.listeners.remove(this);
@@ -238,17 +245,38 @@ class DVar<T> {
         if(observers.length == 0) observers = null;
     }
 
+    public function registerCycleObserver(func:Bool->Void):Void {
+        if(cycleObservers == null){
+            cycleObservers = [func];
+        } else {
+            cycleObservers.push(func);
+        }
+    }
+
+    public function unregisterCycleObserver(func:Bool->Void):Void {
+        if(cycleObservers == null) return;
+        cycleObservers.remove(func);
+        if(cycleObservers.length == 0) cycleObservers = null;
+    }
+
     public function unregisterAll():Void {
         observers = null;
     }
 
-    function updateObservers(diff:Diff<T>):Void {
+    inline function updateObservers(diff:Diff<T>):Void {
         for(observer in observers){
             DStatic.broadcastQueue.add(observer.bind(diff));
         }
     }
 
+    inline function updateCycleObservers():Void {
+        for(cycleObserver in cycleObservers){
+            DStatic.broadcastQueue.add(cycleObserver.bind(cycle));
+        }
+    }
+
     public function isDirty():Bool { return dirty; }
+    public function isCycle():Bool { get(); return cycle; }
 
     public function dispose():Void {
         clearDeps();
