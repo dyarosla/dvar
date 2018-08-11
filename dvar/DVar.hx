@@ -177,6 +177,13 @@ class DVar<T> {
         } else if(!cycle){
             DStatic.cycleVars.add(this);
             cycle = true;
+            if(deps != null){
+                for(dep in deps){
+                    dep.get();
+                }
+            }
+            dirty = false;
+            return val;
         } else {
             dirty = false;
             return val;
@@ -189,8 +196,9 @@ class DVar<T> {
         }
 
         if(cycle){
-            dirty = false;
-            updateCycleObservers();
+            if(!startCycle){
+                updateCycleObservers();
+            }
             return val;
         }
 
@@ -277,7 +285,7 @@ class DVar<T> {
     }
 
     public function isDirty():Bool { return dirty; }
-    public function isCycle():Bool { get(); return cycle; }
+    public function isCycle():Bool { if(dirty) get(); return cycle; }
 
     public function dispose():Void {
         clearDeps();
