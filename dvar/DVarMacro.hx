@@ -91,6 +91,15 @@ class DVarMacro {
         return macro $b{[result]};
     }
 
+    static function markDecls(e:Expr, decls:Map<String, Bool>) {
+        switch(e.expr) {
+            case EConst(CIdent(s)):
+                decls.set(s, true);
+            case _:
+                ExprTools.iter(e, markDecls.bind(_,decls));
+        }
+    }
+
     static function findVars(e:Expr, arr:Array<Path>, path:Path, decls:Map<String, Bool>) {
         switch(e.expr) {
             case EConst(CIdent(s)):
@@ -98,6 +107,7 @@ class DVarMacro {
                 path.push(s);
                 path.reverse();
                 arr.push(path);
+                //trace(s);
             case EField(e, field):
                 var path = path.copy();
                 path.push(field);
@@ -107,7 +117,11 @@ class DVarMacro {
                     decls.set(evar.name, true);
                 }
                 ExprTools.iter(e, findVars.bind(_,arr,path,decls));
+            case EIn(e1, e2):
+                markDecls(e1, decls); // we save the decls in the e1 expr
+                ExprTools.iter(e2, findVars.bind(_,arr,path,decls));
             case _:
+                //trace(e.expr);
                 ExprTools.iter(e, findVars.bind(_,arr,path,decls));
         }
     }

@@ -130,6 +130,12 @@ class DVar<T> {
     // If you want to change definitions within a register callback,
     // to ensure atomicity, you have to propQueue the definition
     public function def(data:{func:Void->T, deps:Array<DVar<Dynamic>>}):Void {
+        if(data == null){
+            DStatic.defQueue.add(defFunc.bind(null, null));
+            DStatic.process();
+            return;
+        }
+
         DStatic.defQueue.add(defFunc.bind(data.func, data.deps));
         DStatic.process();
     }
@@ -293,7 +299,7 @@ class DVar<T> {
         cycleObservers = null;
         listeners = null;
         eq = null;
-        func = null;
+        set(get());
     }
 
     static var eqDefault = function(t0:T, t1:T){ return t0 == t1; }
